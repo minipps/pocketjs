@@ -1,17 +1,14 @@
-//! Nintendo 3DS C ABI for PocketJS's retained UI core.
+//! Platform-neutral C ABI for PocketJS's retained UI core.
 //!
-//! The libctru host owns QuickJS, the PICA200 and presentation, and calls this
-//! library synchronously from its main thread. There is exactly one `Ui`
-//! instance. Strings and blobs are borrowed as `(ptr, len)` for the duration of
-//! a call and copied by the core whenever they must outlive it.
+//! A native host owns its guest VM, graphics backend and presentation, and
+//! calls this library synchronously from its main thread. There is exactly one
+//! `Ui` instance. Strings and blobs are borrowed as `(ptr, len)` for the
+//! duration of a call and copied by the core whenever they must outlive it.
 //!
-//! Unlike engine/symbian, the graphics backend is NOT in this crate: citro3d is
-//! a C library of mostly `static inline` functions, so the DrawList word stream
-//! itself crosses the ABI (`ui_draw`, `ui_draw_list_ptr`, `ui_draw_list_len`)
-//! and hosts/3ds/src/gfx.c walks it. The same reason forces the texture and
-//! font-atlas registries out over the ABI: the C backend resolves a DrawList
-//! texture handle to pixels exactly the way engine/symbian/src/gl/mod.rs's
-//! `sync_resources`/`image_name` do, only from the other side of the boundary.
+//! The graphics backend is not in this crate: native C backends walk the
+//! DrawList word stream through `ui_draw`, `ui_draw_list_ptr` and
+//! `ui_draw_list_len`. The same boundary exposes texture and font-atlas
+//! registries so a C backend can resolve DrawList handles to core-owned bytes.
 //!
 //! All returned pointers borrow core-owned storage and stay valid until the
 //! next call that can move it — a texture upload/free, a font-atlas load, a
@@ -110,6 +107,51 @@ pub struct PocketFontAtlas {
     pub glyph_count: u32,
 }
 
+// Keep the C header and both 32-bit console ABIs in lockstep. These offsets
+// deliberately include the usize/u64 boundary: a target that silently changes
+// pointer width or 64-bit alignment must fail at compile time instead of
+// letting a backend read shifted handles or revisions.
+#[cfg(target_pointer_width = "32")]
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+
+    assert!(size_of::<usize>() == 4);
+    assert!(align_of::<u64>() == 8);
+    assert!(align_of::<PocketGuestPackage>() == 8);
+    assert!(align_of::<PocketTexture>() == 8);
+
+    assert!(offset_of!(PocketGuestPackage, javascript) == 0);
+    assert!(offset_of!(PocketGuestPackage, javascript_length) == 4);
+    assert!(offset_of!(PocketGuestPackage, pak) == 8);
+    assert!(offset_of!(PocketGuestPackage, pak_length) == 12);
+    assert!(offset_of!(PocketGuestPackage, plan) == 16);
+    assert!(offset_of!(PocketGuestPackage, plan_length) == 20);
+    assert!(offset_of!(PocketGuestPackage, package_hash) == 24);
+    assert!(offset_of!(PocketGuestPackage, variant_hash) == 32);
+    assert!(size_of::<PocketGuestPackage>() == 40);
+
+    assert!(offset_of!(PocketTexture, pixels) == 0);
+    assert!(offset_of!(PocketTexture, pixels_len) == 4);
+    assert!(offset_of!(PocketTexture, palette) == 8);
+    assert!(offset_of!(PocketTexture, palette_len) == 12);
+    assert!(offset_of!(PocketTexture, width) == 16);
+    assert!(offset_of!(PocketTexture, height) == 20);
+    assert!(offset_of!(PocketTexture, psm) == 24);
+    assert!(offset_of!(PocketTexture, linear) == 28);
+    assert!(offset_of!(PocketTexture, handle) == 32);
+    assert!(offset_of!(PocketTexture, revision) == 40);
+    assert!(size_of::<PocketTexture>() == 48);
+
+    assert!(offset_of!(PocketFontAtlas, coverage) == 0);
+    assert!(offset_of!(PocketFontAtlas, coverage_len) == 4);
+    assert!(offset_of!(PocketFontAtlas, cell_width) == 8);
+    assert!(offset_of!(PocketFontAtlas, cell_height) == 12);
+    assert!(offset_of!(PocketFontAtlas, coverage_width) == 16);
+    assert!(offset_of!(PocketFontAtlas, coverage_height) == 20);
+    assert!(offset_of!(PocketFontAtlas, glyph_count) == 24);
+    assert!(size_of::<PocketFontAtlas>() == 28);
+};
+
 #[inline]
 fn ui() -> &'static mut Ui {
     unsafe { UI.get_or_insert_with(Ui::new) }
@@ -192,6 +234,8 @@ unsafe fn text_lossy<'a>(ptr: *const u8, len: usize) -> alloc::borrow::Cow<'a, s
 
 #[inline]
 fn read_f64_le(record: &[u8], offset: usize) -> f64 {
+    // Property batches are a serialized wire format, not native f64 memory;
+    // keep decoding little-endian on the Wii's big-endian PowerPC target.
     let mut raw = [0u8; 8];
     raw.copy_from_slice(&record[offset..offset + 8]);
     f64::from_le_bytes(raw)
@@ -230,8 +274,8 @@ pub extern "C" fn ui_shutdown() {
     clear_draw_snapshot();
 }
 
-/// Set the logical viewport. The 3DS host owns the whole 400x240 top screen,
-/// so this is called once at boot and never changes (form "takeover").
+/// Set the logical viewport. Hosts call this during boot before guest
+/// evaluation; whether it can change later is a host policy.
 #[no_mangle]
 pub extern "C" fn ui_set_viewport(width: f32, height: f32) {
     ui().set_viewport(width, height);
@@ -475,6 +519,11 @@ pub extern "C" fn ui_load_font_atlas(ptr: *const u8, len: usize) -> i32 {
 #[no_mangle]
 pub extern "C" fn ui_measure_text(ptr: *const u8, len: usize, font_slot: u32) -> f32 {
     ui().measure_text(unsafe { &text_lossy(ptr, len) }, font_slot as u8)
+}
+
+#[no_mangle]
+pub extern "C" fn ui_raster_revision() -> u64 {
+    ui().raster_revision()
 }
 
 // ---- fixed-step frame and DrawList -----------------------------------------

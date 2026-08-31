@@ -1,0 +1,38 @@
+# pocketjs-core-cabi — pocketjs-core's platform-neutral C ABI for native hosts.
+#
+# Native graphics APIs remain in each host's C backend: this crate owns the
+# retained tree, layout, damage and DrawList emission. The DrawList and
+# texture/font registry accessors cross the C boundary so each host can submit
+# the same stream through its own fixed-function or programmable API.
+#
+# Standalone workspace: console targets need nightly build-std (see
+# .cargo/config.toml) while the desktop engine workspace stays on the normal
+# host toolchain. Each native host supplies its own target on the Cargo command
+# line; this crate deliberately has no platform default.
+#
+# Build from this directory (rust-toolchain.toml pins the compiler), selecting
+# the host target explicitly:
+#   cargo build --release --locked --target armv6k-nintendo-3ds
+#   cargo build -Z json-target-spec --release --locked \
+#     --target ../../wii/targets/powerpc-unknown-eabi.json
+
+[package]
+name = "pocketjs-core-cabi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pocketjs_core_cabi"
+crate-type = ["staticlib"]
+
+[dependencies]
+pocketjs-core = { path = "../../../engine/core" }
+
+[profile.release]
+# Native console hosts link this staticlib into C programs with no unwinder.
+panic = "abort"
+opt-level = "s"
+codegen-units = 1
+lto = true
+
+[workspace]

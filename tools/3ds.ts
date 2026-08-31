@@ -16,8 +16,8 @@
 //
 //   1. tools/build.ts        -> <outdir>/<output>.js + <outdir>/<output>.pak
 //   1b. pocket-package.ts    -> dist/3ds/<output>.pocket (also ROMFS recovery)
-//   2. cargo build --release -> hosts/3ds/core/target/armv6k-nintendo-3ds/release/
-//                               libpocketjs_3ds_core.a   (macOS)
+//   2. cargo build --release -> hosts/shared/core/target/armv6k-nintendo-3ds/release/
+//                               libpocketjs_core_cabi.a   (macOS)
 //   3. QuickJS               -> dist/3ds/quickjs/libquickjs.a  (container, cached)
 //   3b. makerom (--cia)      -> dist/3ds/makerom/bin/makerom    (container, cached)
 //   4. hosts/3ds/Makefile    -> dist/3ds/<output>.3dsx          (container)
@@ -40,7 +40,7 @@
 // derives -DPOCKETJS_TARGET_ID and -DPOCKETJS_HOST_ABI from them rather than
 // from literals — plus:
 //
-//   POCKETJS_CORE_LIB      absolute path to libpocketjs_3ds_core.a
+//   POCKETJS_CORE_LIB      absolute path to libpocketjs_core_cabi.a
 //   POCKETJS_QUICKJS_DIR   directory holding quickjs.h and libquickjs.a
 //   POCKETJS_APP_POCKET    target-thinned recovery guest to embed
 //   POCKETJS_BUILD_DIR     scratch directory for objects, .shbin and the .elf
@@ -96,13 +96,13 @@ import { makeVariant } from "./pocket-pack.ts";
 
 const repository = new URL("..", import.meta.url).pathname; // PocketJS/
 const hostDirectory = `${repository}hosts/3ds/`;
-const coreDirectory = `${hostDirectory}core/`;
+const coreDirectory = `${repository}hosts/shared/core/`;
 
 /** The dev profile's target id; a plan for any other target is rejected. */
 const TARGET_ID = THREE_DS_DEV_TARGET_ID;
 const RUST_TARGET = "armv6k-nintendo-3ds";
-/** Produced by the `pocketjs-3ds-core` staticlib crate in hosts/3ds/core. */
-const CORE_STATIC_LIBRARY = "libpocketjs_3ds_core.a";
+/** Produced by the shared `pocketjs-core-cabi` staticlib crate. */
+const CORE_STATIC_LIBRARY = "libpocketjs_core_cabi.a";
 // Pin the image that produced the hardware-tested CIA. A floating `latest`
 // tag makes fresh machines silently pick a different compiler/libctru/citro3d
 // stack; the digest still resolves through the ordinary Docker registry.
@@ -470,7 +470,7 @@ async function preflightContainer(): Promise<string> {
 }
 
 /**
- * The toolchain the Rust core builds with: hosts/3ds/core/rust-toolchain.toml
+ * The toolchain the Rust core builds with: hosts/shared/core/rust-toolchain.toml
  * owns the choice when it exists, otherwise plain nightly. -Z build-std needs
  * rust-src for whichever one wins.
  */
@@ -874,7 +874,7 @@ export async function build3ds(argv: readonly string[]): Promise<string> {
 
   // 2. the Rust core staticlib, on macOS
   console.log(`PocketJS 3ds: cargo build --release (${RUST_TARGET}, ${toolchain})`);
-  await $`${rustup} run ${toolchain} cargo build --release ${args.cargoArgs}`
+  await $`${rustup} run ${toolchain} cargo build --release --target ${RUST_TARGET} ${args.cargoArgs}`
     .cwd(coreDirectory)
     .env({
       ...process.env,
@@ -892,7 +892,7 @@ export async function build3ds(argv: readonly string[]): Promise<string> {
     throw new Error(
       `PocketJS 3ds: ${CORE_STATIC_LIBRARY} is absent from ${releaseDirectory}` +
         (found.length > 0 ? ` (found ${found.join(", ")})` : "") +
-        " — hosts/3ds/core must be a staticlib crate named pocketjs-3ds-core",
+        " — hosts/shared/core must be a staticlib crate named pocketjs-core-cabi",
     );
   }
 

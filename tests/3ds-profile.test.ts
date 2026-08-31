@@ -276,7 +276,7 @@ describe("private Nintendo 3DS build profile", () => {
 
   test("feeds pak images through the shared IMG-entry parser", () => {
     const core = readFileSync(
-      join(new URL("..", import.meta.url).pathname, "hosts/3ds/core/src/lib.rs"),
+      join(new URL("..", import.meta.url).pathname, "hosts/shared/core/src/lib.rs"),
       "utf8",
     );
     const imageArm = core.slice(

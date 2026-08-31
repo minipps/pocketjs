@@ -22,10 +22,10 @@ exports the DrawList itself (`ui_draw`, `ui_draw_list_ptr`,
 `engine/symbian` does not — its GLES backends consume the list internally.
 
 ```
-core/                 pocketjs-3ds-core: the ui_* C ABI over pocketjs-core
+../shared/core/      pocketjs-core-cabi: the shared ui_* C ABI over pocketjs-core
   src/lib.rs          lifecycle, HostOps, DrawList handoff, pak feed
-  src/alloc.rs        #[global_allocator] over newlib + panic handler
-include/pocket_core.h the C header for the above
+  src/alloc.rs        #[global_allocator] over the host newlib + panic handler
+../shared/pocket_core.h  the C header for the above
 src/main.c            process boot, reusable guest lifecycle, frame loop
 src/runtime.c         .pocket admission, immutable storage, active/rollback state
 src/devserver.c       discovery, paired TCP pump, uploads, screenshots, receipts
@@ -45,15 +45,17 @@ icon.png              48x48 SMDH icon
 Two toolchains, one repository:
 
 - The **Rust staticlib builds on macOS**. `armv6k-nintendo-3ds` is a built-in
-  rustc target, so `core/.cargo/config.toml` only has to ask for `build-std`;
-  `core/rust-toolchain.toml` pins the nightly. The target defaults to unwind,
-  so the crate sets `panic = "abort"`.
+  rustc target; `hosts/shared/core/.cargo/config.toml` supplies `build-std`,
+  and `tools/3ds.ts` selects the target explicitly. The shared crate's
+  `rust-toolchain.toml` pins the nightly, and its release profile sets
+  `panic = "abort"`.
 - The **C half builds in the digest-pinned `devkitpro/devkitarm` image**, which brings
   `arm-none-eabi-gcc`, libctru, citro3d, `picasso`, `smdhtool` and `3dsxtool`.
 
 `tools/3ds.ts` drives both and hands this Makefile container paths in
 environment variables (the list is at the top of the Makefile). Nothing here
-reaches outside `hosts/3ds` except through them.
+reaches outside `hosts/3ds` except for the shared core and QuickJS bridge under
+`hosts/shared`.
 
 ```sh
 bun tools/3ds.ts 3ds-demo              # dist/3ds/<output>.3dsx

@@ -1,17 +1,15 @@
-//! Global allocator over newlib's heap, plus the panic and allocation-error
-//! handlers a `no_std` staticlib has to provide itself.
+//! Global allocator over the host C runtime's heap, plus the panic and
+//! allocation-error handlers a `no_std` staticlib has to provide itself.
 //!
-//! devkitARM's newlib `malloc` returns 8-byte aligned blocks, so an over-
-//! aligned Rust layout has no legal answer here and gets a null pointer
-//! (the same contract engine/symbian/src/lib.rs states for Symbian's malloc).
-//! Nothing in pocketjs-core asks for more than 16-byte alignment through the
-//! allocator — its 16-byte-aligned texture stores are `Vec<u128>`, whose
-//! element alignment newlib does satisfy on ARM.
+//! The C runtimes used by the supported console hosts provide `malloc`,
+//! `memalign`, `realloc` and `free`. `malloc` is used for ordinary layouts;
+//! over-aligned allocations use `memalign` and are grown by copy because a C
+//! `realloc` call cannot preserve that stronger alignment.
 
 use core::alloc::{GlobalAlloc, Layout};
 use core::ffi::c_void;
 
-/// Alignment newlib's `malloc` guarantees on devkitARM (`MALLOC_ALIGNMENT`).
+/// Alignment the supported newlib heaps guarantee for `malloc`.
 const C_MALLOC_ALIGNMENT: usize = 8;
 
 #[inline]
