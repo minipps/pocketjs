@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "toolchainVersion": "devkitpro-wii-v1",
+  "rust": {
+    "toolchain": "nightly-2026-07-02",
+    "target": "powerpc-unknown-eabi",
+    "components": ["rust-src"]
+  },
+  "quickjs": {
+    "version": "2026-06-04",
+    "repository": "https://github.com/pocket-stack/quickjs-rs.git",
+    "revision": "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b"
+  },
+  "sdk": {
+    "rootEnv": "DEVKITPRO",
+    "compilerEnv": "DEVKITPPC",
+    "defaultRoot": "/opt/devkitpro",
+    "markers": [
+      "devkitPPC/wii_rules",
+      "devkitPPC/bin/powerpc-eabi-gcc",
+      "devkitPPC/bin/powerpc-eabi-gcc-ar",
+      "devkitPPC/bin/powerpc-eabi-gcc-ranlib",
+      "libogc/include/gccore.h",
+      "libogc/lib/wii/libogc.a",
+      "libogc/share/ogc.specs",
+      "tools/bin/bin2s",
+      "tools/bin/elf2dol"
+    ]
+  }
+}

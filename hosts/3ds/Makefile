@@ -16,7 +16,7 @@
 #   POCKETJS_AUX_PRESENTATION
 #   POCKETJS_AUX_RASTER_DENSITY
 #   POCKETJS_RASTER_DENSITY  raster samples per logical pixel
-#   POCKETJS_CORE_LIB        libpocketjs_3ds_core.a
+#   POCKETJS_CORE_LIB        libpocketjs_core_cabi.a
 #   POCKETJS_QUICKJS_DIR     directory holding quickjs.h and libquickjs.a
 #   POCKETJS_APP_POCKET      target-thinned guest package to embed as recovery
 #   POCKETJS_BUILD_DIR       scratch for objects, the .shbin, the .elf, romfs
@@ -43,7 +43,8 @@ DEVKITPRO ?= /opt/devkitpro
 DEVKITARM ?= $(DEVKITPRO)/devkitARM
 
 SOURCE := $(CURDIR)/src
-INCLUDE_DIR := $(CURDIR)/include
+SHARED_SOURCE := $(CURDIR)/../shared
+INCLUDE_DIR := $(SHARED_SOURCE)
 BUILD := $(POCKETJS_BUILD_DIR)
 OUT := $(POCKETJS_OUT_3DSX)
 # 3dsxtool reads the recovery guest out of a RomFS directory.
@@ -70,7 +71,7 @@ ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 # without it links cleanly and then hands the library differently shaped
 # values — the guest boots and QuickJS's GC walks garbage pointers.
 CFLAGS := -Wall -Wextra -O2 -g -std=gnu11 -mword-relocations -ffunction-sections -fdata-sections \
-  $(ARCH) -D__3DS__ -DJS_NO_NAN_BOXING \
+  $(ARCH) -D__3DS__ -DJS_NO_NAN_BOXING -DPOCKETJS_QJS_3DS \
   -DPOCKETJS_TARGET_ID='"$(POCKETJS_TARGET)"' \
   -DPOCKETJS_HOST_ABI=$(POCKETJS_HOST_ABI) \
   -DPOCKETJS_VIEW_W=$(POCKETJS_LOGICAL_WIDTH) \
@@ -78,7 +79,7 @@ CFLAGS := -Wall -Wextra -O2 -g -std=gnu11 -mword-relocations -ffunction-sections
   -DPOCKETJS_AUX_VIEW_W=$(POCKETJS_AUX_LOGICAL_WIDTH) \
   -DPOCKETJS_AUX_VIEW_H=$(POCKETJS_AUX_LOGICAL_HEIGHT) \
   -DPOCKETJS_RASTER_DENSITY=$(POCKETJS_RASTER_DENSITY) \
-  -I$(INCLUDE_DIR) -I$(BUILD) -I$(POCKETJS_QUICKJS_DIR) \
+  -I$(INCLUDE_DIR) -I$(BUILD) -I$(SOURCE) -I$(POCKETJS_QUICKJS_DIR) \
   -I$(DEVKITPRO)/libctru/include
 
 ifeq ($(POCKETJS_CAPTURE),1)
@@ -135,6 +136,13 @@ $(FLAGS_STAMP).probe: | $(BUILD)
 $(FLAGS_STAMP): $(FLAGS_STAMP).probe ;
 
 $(BUILD)/%.o: $(SOURCE)/%.c $(BUILD)/vshader_shbin.h $(FLAGS_STAMP) | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# The QuickJS/HostOps bridge is shared with other native hosts. Keep the
+# 3DS-only source path above as a compatibility shim, but compile the shared
+# implementation so this target cannot drift from Wii or future ports.
+$(BUILD)/qjs.o: $(SHARED_SOURCE)/qjs.c $(SHARED_SOURCE)/qjs.h $(SOURCE)/devserver.h \
+  $(SHARED_SOURCE)/pocket_core.h $(BUILD)/vshader_shbin.h $(FLAGS_STAMP) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(ELF): $(OBJECTS)
