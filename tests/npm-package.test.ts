@@ -76,12 +76,16 @@ describe("published npm artifacts", () => {
       "hosts/blackberry-android",
       "hosts/blackberry-qnx",
       "hosts/web",
+      "hosts/shared",
+      "!hosts/shared/core/target",
+      "hosts/wii",
       "docs/APPLE.md",
       "docs/IPHONE2G.md",
       "docs/IPHONE4S.md",
       "docs/IPODTOUCH.md",
       "docs/MEIZU_M8.md",
       "docs/BLACKBERRY_CLASSIC.md",
+      "docs/WII.md",
       "assets/brand",
       "assets/fonts",
       "assets/images/logo.png",
@@ -253,6 +257,7 @@ describe("published npm artifacts", () => {
     expect(files).not.toContain("docs/SYMBIAN_E7.md");
     // The CLI toolchain pin still ships via the wholesale "tools" entry.
     expect(files).toContain("tools/cli/psp-toolchain.json");
+    expect(files).toContain("tools/cli/wii-toolchain.json");
 
     const bspManifest = await Bun.file(
       `${root}engine/pocket3d/crates/pocket3d-bsp/Cargo.toml`,
@@ -268,6 +273,7 @@ describe("published npm artifacts", () => {
       "package.json",
       "psp-toolchain.json",
       "symbian-toolchain.json",
+      "wii-toolchain.json",
     ]);
   });
 

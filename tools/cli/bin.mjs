@@ -9,7 +9,7 @@
 //                            resolve pocket.json once, then build from its plan
 //   pocket play vita <demo> build, install and launch a demo in Vita3K
 //   pocket play ios <demo>  build, stage and launch a demo on the iOS simulator
-//   pocket dev|psp|vita|hw|psplink|devtools|tape [...args]
+//   pocket dev|psp|vita|wii|hw|psplink|devtools|tape [...args]
 //                            low-level passthrough to the checkout's bun scripts
 //   pocket symbian <cmd>      Nokia E7 toolchain doctor/setup/build/deploy
 //   pocket ios <cmd>          Apple iOS doctor/setup/build/play on the simulator
@@ -369,6 +369,7 @@ const SCRIPTS = {
   dev: "tools/dev.ts",
   psp: "tools/psp.ts",
   vita: "tools/vita.ts",
+  wii: "tools/wii.ts",
   symbian: "tools/symbian.ts",
   ios: "tools/ios.ts",
   hw: "tools/hw.ts",
@@ -419,6 +420,7 @@ const HELP = `${C.bold("pocket")} — the PocketJS toolchain CLI
   pocket dev <app>-main    build + serve an app in the browser
   pocket psp <app>         build the PSP EBOOT
   pocket vita <app>        build the PS Vita VPK
+  pocket wii <app>         build the provisional Wii DOL
   pocket symbian <cmd>      Nokia E7 doctor/setup/build-probe/deploy
   pocket ios <cmd>         Apple iOS doctor/setup/build/play on the simulator
   pocket hw <app>          build + run on a real PSP over PSPLINK
@@ -445,6 +447,7 @@ switch (cmd) {
   case "dev":
   case "psp":
   case "vita":
+  case "wii":
   case "symbian":
   case "ios":
   case "hw":

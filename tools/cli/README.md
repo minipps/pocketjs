@@ -20,6 +20,7 @@ pocket play vita hero    # build, install and launch a stock demo in Vita3K
 pocket dev my-app-main   # build + serve in the browser
 pocket psp my-app        # build the PSP EBOOT
 pocket vita my-app       # build the PS Vita VPK
+pocket wii my-app        # build the provisional Wii DOL
 pocket symbian doctor --device
 pocket symbian doctor --coda-usb
 pocket symbian setup --yes
@@ -49,9 +50,9 @@ pocket doctor
 `check`, `compile`, and `build` delegate to PocketJS's canonical manifest
 resolver. `pocket.json` owns the framework, entry, output, viewport and API
 requirements; the target backend consumes the resulting build plan. Arguments
-after `--` go to the selected PSP or Vita backend. The low-level `dev`, `psp`,
-`vita`, `hw`, `psplink`, `devtools`, and `tape` commands remain available for
-framework demos and host development.
+after `--` go to the selected PSP, Vita, or Wii backend. The low-level `dev`,
+`psp`, `vita`, `wii`, `hw`, `psplink`, `devtools`, and `tape` commands remain
+available for framework demos and host development.
 
 Only Node ≥ 18 is required for the CLI itself; everything it diagnoses or
 installs is for building PocketJS apps. See the

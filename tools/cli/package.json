@@ -10,6 +10,7 @@
   "files": [
     "bin.mjs",
     "psp-toolchain.json",
+    "wii-toolchain.json",
     "symbian-toolchain.json",
     "README.md"
   ],

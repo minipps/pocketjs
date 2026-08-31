@@ -37,6 +37,13 @@ function sameViewport(left: Viewport, right: Viewport): boolean {
   return left[0] === right[0] && left[1] === right[1];
 }
 
+function integerFitScale(logical: Viewport, physical: Viewport): number {
+  return Math.min(
+    Math.floor(physical[0] / logical[0]),
+    Math.floor(physical[1] / logical[1]),
+  );
+}
+
 function resolveFixedDisplay(
   requested: { logical: Viewport; presentation: PresentationMode },
   provided: FixedDisplayProfile,
@@ -81,13 +88,11 @@ function resolveFixedDisplay(
     ok = false;
   }
   if (presentation === "integer-fit") {
-    const x = provided.physicalViewport[0] / logical[0];
-    const y = provided.physicalViewport[1] / logical[1];
-    if (!Number.isInteger(x) || x < 1 || x !== y) {
+    if (integerFitScale(logical, provided.physicalViewport) < 1) {
       diagnostics?.push({
         code: "surface.integerFitMismatch",
         path,
-        message: "integer-fit auxiliary presentation requires one positive integer scale on both axes",
+        message: "integer-fit auxiliary presentation requires a positive integer scale that fits both axes",
       });
       ok = false;
     }
@@ -236,13 +241,11 @@ function resolveViewport(
     ok = false;
   }
   if (presentation === "integer-fit") {
-    const x = physicalViewport[0] / logical[0];
-    const y = physicalViewport[1] / logical[1];
-    if (!Number.isInteger(x) || x < 1 || x !== y) {
+    if (integerFitScale(logical, physicalViewport) < 1) {
       diagnostics.push({
         code: "viewport.integerFitMismatch",
         path: fixedPath,
-        message: "integer-fit requires one positive integer scale on both axes",
+        message: "integer-fit requires a positive integer scale that fits both axes",
       });
       ok = false;
     }

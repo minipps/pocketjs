@@ -279,6 +279,10 @@ Devices verified so far: **Sony PSP** (2004), **PS Vita** (2011),
 **PocketBook reader** (e-ink), **ESP32-P4 devkit** (microcontroller), and
 **Mac** (Apple silicon).
 
+The Wii host is **provisional** under the private `wii-dev` profile. It must
+pass the Dolphin capture suite and a real-Wii boot/input/presentation check
+before it can enter the verified inventory; see [`docs/WII.md`](./docs/WII.md).
+
 The authoritative host and target inventory is
 [`contracts/spec/platforms.ts`](./contracts/spec/platforms.ts); each entry
 records what has been verified and how. See
@@ -389,6 +393,7 @@ bun run site:build            # docs, playground, Stage, and landing build
 | Frameworks, components, styling | [Frameworks](https://pocketjs.dev/docs/frameworks/) · [Components](https://pocketjs.dev/docs/components/) · [Styling](https://pocketjs.dev/docs/styling/) |
 | Runtime internals | [Architecture](https://pocketjs.dev/docs/architecture/) · [Core concepts](https://pocketjs.dev/docs/concepts/) · [Native contract](https://pocketjs.dev/docs/native-contract/) |
 | Targets and packaging | [Platform contracts](https://pocketjs.dev/docs/platform-contracts/) · [The `.pocket` platform](./docs/PLATFORM.md) |
+| Wii host bring-up | [`docs/WII.md`](./docs/WII.md) |
 | Debugging and verification | [DevTools](./docs/DEVTOOLS.md) · [Determinism](./docs/DETERMINISM.md) |
 | Runtimes beyond 2D UI | [The runtime family](./docs/RUNTIMES.md) · [Pocket3D](./engine/pocket3d/README.md) |
 | Complete examples | [`apps/`](./apps/) · [Blog](https://pocketjs.dev/blog/) |
