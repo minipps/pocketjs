@@ -136,13 +136,14 @@ export function createJumpBatch(
   entries: readonly (readonly [NodeMirror | number, PropName])[],
 ): JumpBatch {
   const ops = getOps();
-  const records = new Float64Array(entries.length * 3);
+  const records = new ArrayBuffer(entries.length * 24);
+  const view = new DataView(records);
   const props: PropName[] = new Array(entries.length);
   const directNumber: boolean[] = new Array(entries.length);
   for (let i = 0; i < entries.length; i++) {
     const [node, prop] = entries[i];
-    records[i * 3] = nodeId(node);
-    records[i * 3 + 1] = animatablePropId(prop);
+    view.setFloat64(i * 24, nodeId(node), true);
+    view.setFloat64(i * 24 + 8, animatablePropId(prop), true);
     props[i] = prop;
     const kind = PROP_VALUE_KIND[prop];
     directNumber[i] = kind !== VALUE_KIND.color && kind !== VALUE_KIND.int;
@@ -152,18 +153,25 @@ export function createJumpBatch(
       if (index < 0 || index >= entries.length) {
         throw new RangeError(`PocketJS: jump batch index ${index} outside 0..${entries.length - 1}`);
       }
-      records[index * 3 + 2] =
+      view.setFloat64(
+        index * 24 + 16,
         directNumber[index] && typeof value === "number"
           ? value
-          : encodePropValue(props[index], value);
+          : encodePropValue(props[index], value),
+        true,
+      );
     },
     commit() {
       if (ops.setPropBatch) {
-        ops.setPropBatch(records.buffer as ArrayBuffer);
+        ops.setPropBatch(records);
         return;
       }
       for (let i = 0; i < entries.length; i++) {
-        ops.setProp(records[i * 3], records[i * 3 + 1], records[i * 3 + 2]);
+        ops.setProp(
+          view.getFloat64(i * 24, true),
+          view.getFloat64(i * 24 + 8, true),
+          view.getFloat64(i * 24 + 16, true),
+        );
       }
     },
   };

@@ -9,9 +9,11 @@ import { createElement, resetRendererState, type NodeMirror } from "../framework
 import * as hot from "../framework/src/hot.ts";
 
 let calls: [string, ...unknown[]][];
+let batchBytes: number[];
 
 function mockHost(withPropBatch = false): Host {
   calls = [];
+  batchBytes = [];
   let nextId = 100;
   const rec =
     (name: string) =>
@@ -39,7 +41,12 @@ function mockHost(withPropBatch = false): Host {
   } as unknown as HostOps;
   if (withPropBatch) {
     ops.setPropBatch = (buffer) => {
-      calls.push(["setPropBatch", Array.from(new Float64Array(buffer))]);
+      batchBytes = Array.from(new Uint8Array(buffer));
+      const view = new DataView(buffer);
+      calls.push([
+        "setPropBatch",
+        Array.from({ length: buffer.byteLength / 8 }, (_, i) => view.getFloat64(i * 8, true)),
+      ]);
     };
   }
   return { kind: "injected", target: "test", strict: true, ops };
@@ -112,6 +119,18 @@ test("jump batch emits one packed host call", () => {
       "setPropBatch",
       [el.id, PROP.translateX, -8.5, el.id, PROP.opacity, 0.75],
     ],
+  ]);
+});
+
+test("jump batch serializes records as little-endian Float64 bytes", () => {
+  installHost(mockHost(true));
+  const batch = createJumpBatch([[42, "translateX"]]);
+  batch.set(0, -8.5);
+  batch.commit();
+  expect(batchBytes).toEqual([
+    0, 0, 0, 0, 0, 0, 0x45, 0x40,
+    0, 0, 0, 0, 0, 0, 0x60, 0x40,
+    0, 0, 0, 0, 0, 0, 0x21, 0xc0,
   ]);
 });
 
