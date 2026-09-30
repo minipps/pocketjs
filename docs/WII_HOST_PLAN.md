@@ -76,9 +76,9 @@ Final names and return types belong in `hosts/wii/include/pocket_wii.h`. Keep th
 ### E. Homebrew example and validation
 
 - [x] **W22 — Link an external example.** Add `hosts/wii/example/` using `wii_rules`; link the public archive and header, embed or load the `.pocket`, and produce `boot.dol`. **Done when:** its Makefile consumes built library outputs rather than compiling host sources itself. Depends on W11, W15b, W21.
-- [ ] **W23a — Map controller buttons in the example.** Poll libogc outside the library and translate held Wii Remote and supported expansion or GameCube controls to the PocketJS `BTN` mask. **Done when:** confirm, cancel, and D pad reach the guest with the expected bit values. Depends on W22.
-- [ ] **W23b — Map one analog stick in the example.** Convert a supported expansion or GameCube stick to packed PocketJS 0–255 axes, with `0x8080` when absent. **Done when:** the guest sees center and both axis extremes. Depends on W22.
-- [ ] **W24 — Schedule fixed ticks in the example.** Use elapsed time to call `pocket_wii_tick` at 60 Hz while video presentation follows the selected Wii mode. **Done when:** the guest advances at the same simulation rate in 50 Hz and 60 Hz video modes. Depends on W22.
+- [x] **W23a — Map controller buttons in the example.** Poll libogc outside the library and translate held Wii Remote and supported expansion or GameCube controls to the PocketJS `BTN` mask. **Done when:** confirm, cancel, and D pad reach the guest with the expected bit values. Depends on W22.
+- [x] **W23b — Map one analog stick in the example.** Convert a supported expansion or GameCube stick to packed PocketJS 0–255 axes, with `0x8080` when absent. **Done when:** the guest sees center and both axis extremes. Depends on W22.
+- [x] **W24 — Schedule fixed ticks in the example.** Use elapsed time to call `pocket_wii_tick` at 60 Hz while video presentation follows the selected Wii mode. **Done when:** the guest advances at the same simulation rate in 50 Hz and 60 Hz video modes. Depends on W22.
 - [ ] **W25 — Run an emulator rendering check.** Run the example in Dolphin and compare captured rectangles, glyphs, alpha images, transforms, clips, and input state to known reference output. **Done when:** no unexplained rendering or input difference remains; record any accepted device specific difference with exact images and affected operations. Depends on W21–W24, including W23a and W23b.
 - [ ] **W26 — Run a Wii hardware check.** Boot the example through Homebrew, check startup, controls, repeated boot or shutdown, texture changes, memory use, and both available video modes. **Done when:** the library draws inside the host application without a crash or visible corruption, and measured limits are recorded. Depends on W25.
 - [ ] **W27 — Document consumption.** Add `hosts/wii/README.md` with toolchain versions, build commands, archive/header/package outputs, a minimal caller loop, input mapping, GX state rule, package lifetime, and verified limits. **Done when:** a separate Wii Homebrew project can follow the steps without repository internal includes. Depends on W22–W26.
@@ -133,6 +133,10 @@ The QuickJS Makefile's `check` target runs the desktop probe; the separate Dolph
 **W11 passed:** `bun tools/wii.ts --library` exported the C header and Rust/QuickJS archives; an external Makefile under `/tmp` linked `boot.dol` with no unresolved symbols and selected newlib `memset` and `memcpy`.
 
 **W22 passed:** `make -B -C hosts/wii/example V=1` linked `boot.dol` from the exported archives and header with no undefined symbols; the map selected newlib `memset` and `memcpy`. Dolphin startup was blocked by Flatpak instance allocation, so W25 will own rendering validation.
+
+**W23a/W23b passed:** the host mapper check printed `W23a/W23b PASS: button mapping and calibrated Nunchuk axis center/extremes` for remote/classic/GameCube masks; a forced devkitPPC build compiled `input.c`, linked `boot.dol` with no undefined symbols, and selected newlib `memset` and `memcpy` in its map.
+
+**W24 passed:** `make -C hosts/wii/example check BUILD=/tmp/pocketjs-wii-example-w24-check` asserted 60 ticks per synthetic one-second 50 Hz and 60 Hz schedule; the forced devkitPPC build linked a fresh `boot.dol` with no undefined symbols and map-selected newlib `memset`/`memcpy`. Hardware cadence remains for W26.
 
 ## Source contracts
 
