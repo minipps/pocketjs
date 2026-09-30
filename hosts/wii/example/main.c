@@ -73,7 +73,7 @@ int main(void) {
 #define FIFO_SIZE (256 * 1024)
 #define CADENCE_REPORT_TICKS secs_to_ticks(5)
 #define HEAP_SAMPLE_TICKS secs_to_ticks(1)
-#define HOST_LOG_PATH "sd:/apps/pocketjs-wii/wii-host.log"
+#define HOST_LOG_PATH "sd:/apps/wii-pocketjs/wii-host.log"
 
 static FILE *host_log;
 
@@ -145,6 +145,41 @@ static int boot_hero(unsigned lifecycle) {
   }
   w26_logf("W26 PASS: lifecycle=%u hero-main.pocket booted\n", lifecycle);
   return 1;
+}
+
+static GXColor wpad_indicator_color(const pocket_wii_input_t *input) {
+  for (int channel = 0; channel < POCKET_WII_WPAD_CHANNELS; ++channel)
+    if (input->wpad_probe[channel] == WPAD_ERR_NONE)
+      return (GXColor){48, 255, 96, 255};
+
+  if (input->wpad_status == WPAD_STATE_DISABLED)
+    return (GXColor){255, 0, 255, 255};
+  if (input->wpad_status == WPAD_STATE_ENABLING)
+    return (GXColor){255, 192, 0, 255};
+  return (GXColor){255, 48, 48, 255};
+}
+
+static void log_wpad_state(const pocket_wii_input_t *input, int init_result,
+                           int snapshot) {
+  static int last_status = -1;
+  static int last_probe[POCKET_WII_WPAD_CHANNELS] = {-100, -100, -100, -100};
+  int changed = input->wpad_status != last_status;
+  for (int channel = 0; channel < POCKET_WII_WPAD_CHANNELS; ++channel)
+    if (input->wpad_probe[channel] != last_probe[channel]) changed = 1;
+
+  if (changed) {
+    w26_logf("W26 WPAD transition init_rc=%d status=%d probes=%d,%d,%d,%d\n",
+             init_result, input->wpad_status, input->wpad_probe[0],
+             input->wpad_probe[1], input->wpad_probe[2], input->wpad_probe[3]);
+    last_status = input->wpad_status;
+    for (int channel = 0; channel < POCKET_WII_WPAD_CHANNELS; ++channel)
+      last_probe[channel] = input->wpad_probe[channel];
+  }
+
+  if (snapshot)
+    w26_logf("W26 WPAD snapshot init_rc=%d status=%d probes=%d,%d,%d,%d\n",
+             init_result, input->wpad_status, input->wpad_probe[0],
+             input->wpad_probe[1], input->wpad_probe[2], input->wpad_probe[3]);
 }
 
 static void caller_gx_state(const GXRModeObj *mode) {
@@ -250,7 +285,9 @@ int main(void) {
            (unsigned)mode->fbWidth, (unsigned)mode->xfbHeight);
   w26_logf("W26 INFO: press Wiimote HOME to shutdown and re-boot hero-main.pocket\n");
 
-  pocket_wii_input_init();
+  int wpad_init_result = pocket_wii_input_init();
+  w26_logf("W26 WPAD startup init_rc=%d status=%d\n", wpad_init_result,
+           WPAD_GetStatus());
   unsigned lifecycle = 1;
   struct mallinfo heap = mallinfo();
   size_t heap_peak = heap.uordblks;
@@ -275,6 +312,7 @@ int main(void) {
   uint64_t tick_phase = 0;
   for (;;) {
     pocket_wii_input_poll(&input);
+    log_wpad_state(&input, wpad_init_result, 0);
 
     int restart = 0;
     for (int channel = WPAD_CHAN_0; channel <= WPAD_CHAN_3; ++channel) {
@@ -328,7 +366,7 @@ int main(void) {
     }
 
     caller_gx_state(mode);
-    draw_caller_rect(12.0f, 12.0f, 24.0f, (GXColor){255, 48, 48, 255});
+    draw_caller_rect(12.0f, 12.0f, 24.0f, wpad_indicator_color(&input));
     if (guest_active) {
       if (pocket_wii_draw(80, 80, 480, 272) != 0) {
         w26_logf("W26 FAIL: lifecycle=%u PocketJS draw: %s\n", lifecycle,
@@ -358,6 +396,7 @@ int main(void) {
       last_heap_sample = now;
     }
     if (diff_ticks(last_report, now) >= CADENCE_REPORT_TICKS) {
+      log_wpad_state(&input, wpad_init_result, 1);
       heap = mallinfo();
       if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
       uint64_t window_ms = ticks_to_millisecs(diff_ticks(last_report, now));

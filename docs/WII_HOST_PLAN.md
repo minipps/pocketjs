@@ -140,6 +140,8 @@ The QuickJS Makefile's `check` target runs the desktop probe; the separate Dolph
 
 **W25 passed:** Dolphin 2606/Vulkan captures `hosts/wii/check/w25/evidence/before-a.png` and `hosts/wii/check/w25/evidence/after-a.png` passed all 10 samples for rectangles, nested clips and restoration, transformed alpha image, baked glyph, and Wii Remote A input; the indicator changed `#c02020`→`#20c060`, and alpha `#41005f` is within ±4/channel of formula `#400060`. The separate hero capture accepts the current arcade logo against stale Web goldens with the old blue play icon because the source art changed.
 
+**W26 physical check is partial:** the corrected DOL booted on a Wii, and visuals looked good in both 50 Hz and 60 Hz modes. The non-original AliExpress Wii Remote disconnected and would not reconnect, so no input, analog, or reboot checks were completed; no cadence or heap measurements were recorded. The card has `apps/wii-pocketjs/boot.dol`; the earlier logger targeted `apps/pocketjs-wii/`, while the diagnostic build now targets the confirmed `sd:/apps/wii-pocketjs/wii-host.log`. Physical log writing remains unverified. W26 remains pending.
+
 ## Source contracts
 
 - `contracts/spec/spec.ts`: HostOps codes, button mask, pixel formats, and DrawList format.

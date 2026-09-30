@@ -5,9 +5,10 @@
 #include "input_map.h"
 #include "pocket_wii.h"
 
-void pocket_wii_input_init(void) {
-  WPAD_Init();
+int pocket_wii_input_init(void) {
+  int wpad_result = WPAD_Init();
   PAD_Init();
+  return wpad_result;
 }
 
 void pocket_wii_input_poll(pocket_wii_input_t *input) {
@@ -19,12 +20,15 @@ void pocket_wii_input_poll(pocket_wii_input_t *input) {
 
   WPAD_ScanPads();
   PAD_ScanPads();
+  input->wpad_status = WPAD_GetStatus();
   for (int channel = WPAD_CHAN_0; channel <= WPAD_CHAN_3; ++channel) {
     uint32_t held = WPAD_ButtonsHeld(channel);
     uint32_t extension_held = held & UINT32_C(0xffff0000);
     uint32_t expansion = 0;
+    int probe = WPAD_Probe(channel, &expansion);
     remote_held |= held & UINT32_C(0x0000ffff);
-    if (WPAD_Probe(channel, &expansion) != WPAD_ERR_NONE) continue;
+    input->wpad_probe[channel] = probe;
+    if (probe != WPAD_ERR_NONE) continue;
     if (expansion == WPAD_EXP_NUNCHUK) nunchuk_held |= extension_held;
     if (expansion == WPAD_EXP_CLASSIC) classic_held |= extension_held;
     if (expansion == WPAD_EXP_NUNCHUK && !analog_set) {
