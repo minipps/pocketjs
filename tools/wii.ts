@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalJson } from "../framework/src/manifest/plan.ts";
@@ -77,8 +78,15 @@ export function buildWiiGuest(app: string): void {
   );
 }
 
+export function buildWiiLibrary(): void {
+  execFileSync("make", ["-C", join(repository, "hosts", "wii"), "library"], {
+    stdio: "inherit",
+  });
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
-  if (args.length !== 1) throw new Error("usage: bun tools/wii.ts <app>");
-  buildWiiGuest(args[0]!);
+  if (args.length !== 1) throw new Error("usage: bun tools/wii.ts <app> | --library");
+  if (args[0] === "--library") buildWiiLibrary();
+  else buildWiiGuest(args[0]!);
 }
