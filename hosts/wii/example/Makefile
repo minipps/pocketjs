@@ -17,7 +17,7 @@ DOL := $(BUILD)/boot.dol
 PACKAGE_HEADER := $(BUILD)/hero_package.h
 OBJECT := $(BUILD)/main.o
 INPUT_OBJECT := $(BUILD)/input.o
-LIBS := -lwiiuse -lbte -logc -lm
+LIBS := -lfat -lwiiuse -lbte -logc -lm
 CFLAGS := -O2 -std=gnu11 -Wall -Wextra $(MACHDEP) -I$(DIST) -I$(BUILD) -I$(LIBOGC_INC) \
   -ffunction-sections -fdata-sections
 LDFLAGS := $(MACHDEP) -Wl,--gc-sections -Wl,--no-undefined \

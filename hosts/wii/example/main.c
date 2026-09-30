@@ -33,18 +33,97 @@ int main(void) {
   return 0;
 }
 #else
+#include <errno.h>
 #include <gccore.h>
+#include <fat.h>
 #include <malloc.h>
 #include <ogc/lwp_watchdog.h>
 #include <ogc/system.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <wiiuse/wpad.h>
 
 #include "pocket_wii.h"
 #include "hero_package.h"
 #include "input.h"
 
 #define FIFO_SIZE (256 * 1024)
+#define CADENCE_REPORT_TICKS secs_to_ticks(5)
+#define HEAP_SAMPLE_TICKS secs_to_ticks(1)
+#define HOST_LOG_PATH "sd:/apps/pocketjs-wii/wii-host.log"
+
+static FILE *host_log;
+
+static void w26_logf(const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  if (host_log != NULL) {
+    int written = vfprintf(host_log, format, args);
+    va_end(args);
+    if (written >= 0 && fflush(host_log) == 0) return;
+
+    FILE *failed_log = host_log;
+    host_log = NULL;
+    fclose(failed_log);
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    puts("W26 LOG ERROR: SD write failed; continuing on OSReport");
+  } else {
+    vprintf(format, args);
+    va_end(args);
+  }
+  fflush(stdout);
+}
+
+static void init_host_log(void) {
+  if (!fatInitDefault()) {
+    w26_logf("W26 LOG unavailable: libfat initialization failed; using OSReport\n");
+    return;
+  }
+  host_log = fopen(HOST_LOG_PATH, "w");
+  if (host_log == NULL) {
+    w26_logf("W26 LOG unavailable: cannot overwrite %s: %s; using OSReport\n",
+             HOST_LOG_PATH, strerror(errno));
+    return;
+  }
+  w26_logf("W26 LOG path=%s mode=overwrite\n", HOST_LOG_PATH);
+}
+
+static void close_host_log(void) {
+  if (host_log == NULL) return;
+  FILE *log = host_log;
+  host_log = NULL;
+  int failed = fflush(log) != 0;
+  if (fclose(log) != 0) failed = 1;
+  if (failed) {
+    puts("W26 LOG ERROR: SD close failed; last records may be incomplete");
+    fflush(stdout);
+  }
+}
+
+static const char *video_standard(uint32_t vi_tv_mode) {
+  switch (vi_tv_mode >> 2) {
+    case VI_NTSC: return "NTSC-60Hz";
+    case VI_PAL: return "PAL-50Hz";
+    case VI_MPAL: return "MPAL-60Hz";
+    case VI_DEBUG: return "debug-60Hz";
+    case VI_DEBUG_PAL: return "debug-PAL-50Hz";
+    case VI_EURGB60: return "EURGB60-60Hz";
+    default: return "unknown";
+  }
+}
+
+static int boot_hero(unsigned lifecycle) {
+  if (pocket_wii_boot(hero_main_pocket, hero_main_pocket_len) != 0) {
+    w26_logf("W26 FAIL: lifecycle=%u PocketJS boot: %s\n", lifecycle,
+             pocket_wii_last_error());
+    return 0;
+  }
+  w26_logf("W26 PASS: lifecycle=%u hero-main.pocket booted\n", lifecycle);
+  return 1;
+}
 
 static void caller_gx_state(const GXRModeObj *mode) {
   Mtx identity;
@@ -121,43 +200,92 @@ static int init_video(GXRModeObj **mode_out, void **xfb, void **fifo) {
 
 int main(void) {
   SYS_STDIO_Report(true);
+  init_host_log();
   GXRModeObj *mode = NULL;
   void *xfb[2] = { NULL, NULL };
   void *fifo = NULL;
   if (!init_video(&mode, xfb, &fifo)) {
-    puts("W22 FAIL: video or GX setup failed");
+    w26_logf("W26 FAIL: video or GX setup failed\n");
     free(fifo);
+    close_host_log();
     return 1;
   }
 
+  w26_logf("W26 VIDEO standard=%s viTVMode=%u vi=%ux%u efb=%ux%u xfb=%ux%u\n",
+           video_standard(mode->viTVMode), (unsigned)mode->viTVMode,
+           (unsigned)mode->viWidth, (unsigned)mode->viHeight,
+           (unsigned)mode->fbWidth, (unsigned)mode->efbHeight,
+           (unsigned)mode->fbWidth, (unsigned)mode->xfbHeight);
+  w26_logf("W26 INFO: press Wiimote HOME to shutdown and re-boot hero-main.pocket\n");
+
   pocket_wii_input_init();
-  if (pocket_wii_boot(hero_main_pocket, hero_main_pocket_len) != 0) {
-    printf("W22 FAIL: PocketJS boot: %s\n", pocket_wii_last_error());
+  unsigned lifecycle = 1;
+  int guest_active = boot_hero(lifecycle);
+  if (!guest_active) {
     pocket_wii_shutdown();
+    free(fifo);
+    close_host_log();
     return 2;
   }
-  puts("W22 PASS: hero-main.pocket booted");
 
   unsigned framebuffer = 0;
   pocket_wii_input_t input;
-  uint64_t last_time = gettime();
+  uint64_t run_start = gettime();
+  uint64_t last_time = run_start;
+  uint64_t last_report = run_start;
+  uint64_t last_heap_sample = run_start;
+  uint64_t frames = 0, ticks = 0;
+  uint64_t reported_frames = 0, reported_ticks = 0;
   uint64_t tick_phase = 0;
+  struct mallinfo heap = mallinfo();
+  size_t heap_peak = heap.uordblks;
   for (;;) {
     pocket_wii_input_poll(&input);
 
+    int restart = 0;
+    for (int channel = WPAD_CHAN_0; channel <= WPAD_CHAN_3; ++channel) {
+      if (WPAD_ButtonsDown(channel) & WPAD_BUTTON_HOME) {
+        restart = 1;
+        break;
+      }
+    }
+    if (restart) {
+      w26_logf("W26 LIFECYCLE shutdown lifecycle=%u hotkey=Wiimote-HOME\n",
+               lifecycle);
+      pocket_wii_shutdown();
+      heap = mallinfo();
+      if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
+      w26_logf("W26 HEAP lifecycle=%u stage=shutdown current=%lu peak_sampled=%lu arena=%lu free=%lu\n",
+               lifecycle, (unsigned long)heap.uordblks,
+               (unsigned long)heap_peak, (unsigned long)heap.arena,
+               (unsigned long)heap.fordblks);
+
+      ++lifecycle;
+      guest_active = boot_hero(lifecycle);
+      run_start = last_time = last_report = last_heap_sample = gettime();
+      frames = ticks = reported_frames = reported_ticks = 0;
+      tick_phase = 0;
+      heap = mallinfo();
+      heap_peak = heap.uordblks;
+    }
+
     uint64_t now = gettime();
-    uint64_t ticks_due = pocket_wii_schedule_ticks(
-        diff_ticks(last_time, now), PPC_TIMER_CLOCK, &tick_phase);
+    uint64_t ticks_due = guest_active
+        ? pocket_wii_schedule_ticks(diff_ticks(last_time, now),
+                                    PPC_TIMER_CLOCK, &tick_phase)
+        : 0;
     last_time = now;
     int tick_failed = 0;
     /* ponytail: drain all overdue ticks; cap catch-up only if stalls cause persistent lag. */
     while (ticks_due != 0) {
       --ticks_due;
       if (pocket_wii_tick(input.buttons, input.analog) != 0) {
-        printf("W24 FAIL: PocketJS tick: %s\n", pocket_wii_last_error());
+        w26_logf("W26 FAIL: lifecycle=%u PocketJS tick: %s\n", lifecycle,
+                 pocket_wii_last_error());
         tick_failed = 1;
         break;
       }
+      ++ticks;
     }
     if (tick_failed) {
       break;
@@ -165,12 +293,15 @@ int main(void) {
 
     caller_gx_state(mode);
     draw_caller_rect(12.0f, 12.0f, 24.0f, (GXColor){255, 48, 48, 255});
-    if (pocket_wii_draw(80, 80, 480, 272) != 0) {
-      printf("W22 FAIL: PocketJS draw: %s\n", pocket_wii_last_error());
-      break;
+    if (guest_active) {
+      if (pocket_wii_draw(80, 80, 480, 272) != 0) {
+        w26_logf("W26 FAIL: lifecycle=%u PocketJS draw: %s\n", lifecycle,
+                 pocket_wii_last_error());
+        break;
+      }
+      /* pocket_wii_draw owns GX state until the caller binds its state again. */
+      caller_gx_state(mode);
     }
-    /* pocket_wii_draw owns GX state until the caller binds its state again. */
-    caller_gx_state(mode);
     draw_caller_rect((f32)mode->fbWidth - 36.0f, 12.0f, 24.0f,
                      (GXColor){48, 255, 96, 255});
 
@@ -181,10 +312,55 @@ int main(void) {
     VIDEO_Flush();
     VIDEO_WaitVSync();
     framebuffer ^= 1;
+    ++frames;
+
+    now = gettime();
+    if (diff_ticks(last_heap_sample, now) >= HEAP_SAMPLE_TICKS) {
+      /* ponytail: one-second mallinfo samples can miss shorter allocation spikes. */
+      heap = mallinfo();
+      if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
+      last_heap_sample = now;
+    }
+    if (diff_ticks(last_report, now) >= CADENCE_REPORT_TICKS) {
+      heap = mallinfo();
+      if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
+      uint64_t window_ms = ticks_to_millisecs(diff_ticks(last_report, now));
+      uint64_t elapsed_ms = ticks_to_millisecs(diff_ticks(run_start, now));
+      uint64_t window_frames = frames - reported_frames;
+      uint64_t window_ticks = ticks - reported_ticks;
+      uint64_t fps_x100 = window_ms ? window_frames * 100000 / window_ms : 0;
+      uint64_t tps_x100 = window_ms ? window_ticks * 100000 / window_ms : 0;
+      w26_logf("W26 CADENCE lifecycle=%u guest=%s monotonic_ms=%llu window_ms=%llu frames=%llu ticks=%llu fps=%llu.%02llu tps=%llu.%02llu total_frames=%llu total_ticks=%llu\n",
+               lifecycle, guest_active ? "active" : "boot-failed",
+               (unsigned long long)elapsed_ms, (unsigned long long)window_ms,
+               (unsigned long long)window_frames,
+               (unsigned long long)window_ticks,
+               (unsigned long long)(fps_x100 / 100),
+               (unsigned long long)(fps_x100 % 100),
+               (unsigned long long)(tps_x100 / 100),
+               (unsigned long long)(tps_x100 % 100),
+               (unsigned long long)frames, (unsigned long long)ticks);
+      w26_logf("W26 HEAP lifecycle=%u current=%lu peak_sampled=%lu arena=%lu free=%lu\n",
+               lifecycle, (unsigned long)heap.uordblks,
+               (unsigned long)heap_peak, (unsigned long)heap.arena,
+               (unsigned long)heap.fordblks);
+      reported_frames = frames;
+      reported_ticks = ticks;
+      last_report = now;
+    }
   }
 
+  w26_logf("W26 LIFECYCLE shutdown lifecycle=%u reason=host-loop-error\n",
+           lifecycle);
   pocket_wii_shutdown();
+  heap = mallinfo();
+  if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
+  w26_logf("W26 HEAP lifecycle=%u stage=shutdown current=%lu peak_sampled=%lu arena=%lu free=%lu\n",
+           lifecycle, (unsigned long)heap.uordblks,
+           (unsigned long)heap_peak, (unsigned long)heap.arena,
+           (unsigned long)heap.fordblks);
   free(fifo);
+  close_host_log();
   return 3;
 }
 #endif
