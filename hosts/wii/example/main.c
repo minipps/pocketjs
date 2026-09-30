@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 
 static uint64_t pocket_wii_schedule_ticks(uint64_t elapsed,
                                           uint64_t ticks_per_second,
@@ -10,6 +11,22 @@ static uint64_t pocket_wii_schedule_ticks(uint64_t elapsed,
 
 #ifdef POCKET_WII_SCHEDULE_CHECK
 #include <assert.h>
+#define MEM_K0_TO_K1(pointer) \
+  ((void *)((uintptr_t)(pointer) + UINT32_C(0x40000000)))
+#else
+#include <gccore.h>
+#endif
+
+static void *k0_to_k1_or_null(void *pointer) {
+  return pointer != NULL ? MEM_K0_TO_K1(pointer) : NULL;
+}
+
+static int video_allocations_ready(const void *xfb0, const void *xfb1,
+                                   const void *fifo) {
+  return xfb0 != NULL && xfb1 != NULL && fifo != NULL;
+}
+
+#ifdef POCKET_WII_SCHEDULE_CHECK
 
 static uint64_t simulate_video_rate(uint64_t video_hz) {
   const uint64_t ticks_per_second = 30000;
@@ -25,6 +42,12 @@ static uint64_t simulate_video_rate(uint64_t video_hz) {
 
 int main(void) {
   uint64_t phase = 0;
+  assert((uintptr_t)MEM_K0_TO_K1(NULL) == UINT32_C(0x40000000));
+  assert(k0_to_k1_or_null(NULL) == NULL);
+  assert((uintptr_t)k0_to_k1_or_null((void *)(uintptr_t)0x80001234) ==
+         UINT32_C(0xc0001234));
+  assert(video_allocations_ready((void *)1, (void *)2, (void *)3));
+  assert(!video_allocations_ready(NULL, (void *)2, (void *)3));
   assert(simulate_video_rate(50) == 60);
   assert(simulate_video_rate(60) == 60);
   assert(pocket_wii_schedule_ticks(499, 30000, &phase) == 0);
@@ -34,7 +57,6 @@ int main(void) {
 }
 #else
 #include <errno.h>
-#include <gccore.h>
 #include <fat.h>
 #include <malloc.h>
 #include <ogc/lwp_watchdog.h>
@@ -169,23 +191,33 @@ static void draw_caller_rect(f32 x, f32 y, f32 size, GXColor color) {
   GX_End();
 }
 
-static int init_video(GXRModeObj **mode_out, void **xfb, void **fifo) {
+static int init_video(GXRModeObj **mode_out, void **xfb, void **fifo_raw_out) {
+  *fifo_raw_out = NULL;
   VIDEO_Init();
   GXRModeObj *mode = VIDEO_GetPreferredMode(NULL);
   if (mode == NULL) return 0;
-  xfb[0] = MEM_K0_TO_K1(SYS_AllocateFramebuffer(mode));
-  xfb[1] = MEM_K0_TO_K1(SYS_AllocateFramebuffer(mode));
-  *fifo = MEM_K0_TO_K1(memalign(32, FIFO_SIZE));
-  if (xfb[0] == NULL || xfb[1] == NULL || *fifo == NULL) return 0;
+  void *raw_xfb[2] = {
+    SYS_AllocateFramebuffer(mode), SYS_AllocateFramebuffer(mode)
+  };
+  void *fifo_raw = memalign(32, FIFO_SIZE);
+  if (!video_allocations_ready(raw_xfb[0], raw_xfb[1], fifo_raw)) {
+    /* ponytail: leave partial XFBs to process exit; libogc ownership is unclear. */
+    free(fifo_raw);
+    return 0;
+  }
+  xfb[0] = k0_to_k1_or_null(raw_xfb[0]);
+  xfb[1] = k0_to_k1_or_null(raw_xfb[1]);
+  void *fifo_k1 = k0_to_k1_or_null(fifo_raw);
+  *fifo_raw_out = fifo_raw;
 
-  memset(*fifo, 0, FIFO_SIZE);
+  memset(fifo_k1, 0, FIFO_SIZE);
   VIDEO_Configure(mode);
   VIDEO_SetNextFramebuffer(xfb[0]);
   VIDEO_SetBlack(true);
   VIDEO_Flush();
   VIDEO_WaitVSync();
 
-  GX_Init(*fifo, FIFO_SIZE);
+  GX_Init(fifo_k1, FIFO_SIZE);
   GX_SetPixelFmt(GX_PF_RGB8_Z24, GX_ZC_LINEAR);
   GX_SetCopyClear((GXColor){0, 0, 0, 255}, GX_MAX_Z24);
   GX_SetScissor(0, 0, mode->fbWidth, mode->efbHeight);
@@ -203,10 +235,10 @@ int main(void) {
   init_host_log();
   GXRModeObj *mode = NULL;
   void *xfb[2] = { NULL, NULL };
-  void *fifo = NULL;
-  if (!init_video(&mode, xfb, &fifo)) {
+  void *fifo_raw = NULL;
+  if (!init_video(&mode, xfb, &fifo_raw)) {
     w26_logf("W26 FAIL: video or GX setup failed\n");
-    free(fifo);
+    free(fifo_raw);
     close_host_log();
     return 1;
   }
@@ -220,13 +252,17 @@ int main(void) {
 
   pocket_wii_input_init();
   unsigned lifecycle = 1;
+  struct mallinfo heap = mallinfo();
+  size_t heap_peak = heap.uordblks;
   int guest_active = boot_hero(lifecycle);
   if (!guest_active) {
     pocket_wii_shutdown();
-    free(fifo);
+    free(fifo_raw);
     close_host_log();
     return 2;
   }
+  heap = mallinfo();
+  if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
 
   unsigned framebuffer = 0;
   pocket_wii_input_t input;
@@ -237,8 +273,6 @@ int main(void) {
   uint64_t frames = 0, ticks = 0;
   uint64_t reported_frames = 0, reported_ticks = 0;
   uint64_t tick_phase = 0;
-  struct mallinfo heap = mallinfo();
-  size_t heap_peak = heap.uordblks;
   for (;;) {
     pocket_wii_input_poll(&input);
 
@@ -261,12 +295,14 @@ int main(void) {
                (unsigned long)heap.fordblks);
 
       ++lifecycle;
+      heap = mallinfo();
+      heap_peak = heap.uordblks;
       guest_active = boot_hero(lifecycle);
+      heap = mallinfo();
+      if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
       run_start = last_time = last_report = last_heap_sample = gettime();
       frames = ticks = reported_frames = reported_ticks = 0;
       tick_phase = 0;
-      heap = mallinfo();
-      heap_peak = heap.uordblks;
     }
 
     uint64_t now = gettime();
@@ -316,7 +352,7 @@ int main(void) {
 
     now = gettime();
     if (diff_ticks(last_heap_sample, now) >= HEAP_SAMPLE_TICKS) {
-      /* ponytail: one-second mallinfo samples can miss shorter allocation spikes. */
+      /* ponytail: sampled baselines miss sub-second spikes; allocator hooks for exact peaks. */
       heap = mallinfo();
       if (heap.uordblks > heap_peak) heap_peak = heap.uordblks;
       last_heap_sample = now;
@@ -359,7 +395,7 @@ int main(void) {
            lifecycle, (unsigned long)heap.uordblks,
            (unsigned long)heap_peak, (unsigned long)heap.arena,
            (unsigned long)heap.fordblks);
-  free(fifo);
+  free(fifo_raw);
   close_host_log();
   return 3;
 }
