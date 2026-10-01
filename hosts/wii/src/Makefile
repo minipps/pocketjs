@@ -45,7 +45,7 @@ HOST_CFLAGS := -O2 -std=gnu11 -Wall -Wextra -DJS_NO_NAN_BOXING -DPOCKETJS_NO_ATO
   -isystem $(QUICKJS_SRC) -I$(WORK) -I. -I../include
 
 .PHONY: all check check-w15a check-w15b check-w21-native w21-build wii-library desktop-qjs clean
-all: $(DOL)
+all: wii-library
 
 wii-library: $(WII_LIBRARY_ARCHIVE)
 
