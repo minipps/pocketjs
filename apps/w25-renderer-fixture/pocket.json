@@ -1,7 +1,7 @@
 {
   "$schema": "https://pocketjs.dev/schema/pocket-2.json",
   "pocket": 2,
-  "id": "dev.pocket-stack.wii-renderer-fixture",
+  "id": "dev.pocket-nexus.wii-renderer-fixture",
   "name": "pocketjs-wii-renderer-fixture",
   "title": "PocketJS Wii Renderer Fixture",
   "version": "0.1.0",

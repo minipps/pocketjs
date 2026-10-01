@@ -16,14 +16,14 @@ const pak = pack([
   { key: "ui:probe-long", dtype: 0, data: Uint8Array.of(4, 5, 6, 7, 8, 9, 10) },
 ]);
 const encoded = encodePocketPackage({
-  manifest: new TextEncoder().encode('{"pocket":2,"id":"dev.pocket-stack.w06a","title":"W06a"}'),
+  manifest: new TextEncoder().encode('{"pocket":2,"id":"dev.pocket-nexus.w06a","title":"W06a"}'),
   variants: [{
     target: "wii-dev",
     hostAbi: 7,
     sections: [
       {
         kind: POCKET_SECTION.identity,
-        bytes: encodeIdentity({ output: "w06a", id: "dev.pocket-stack.w06a", title: "W06a" }),
+        bytes: encodeIdentity({ output: "w06a", id: "dev.pocket-nexus.w06a", title: "W06a" }),
       },
       { kind: POCKET_SECTION.plan, bytes: new TextEncoder().encode('{"target":{"id":"wii-dev"}}') },
       { kind: POCKET_SECTION.js, bytes: new TextEncoder().encode("globalThis.frame = () => {};\0") },
