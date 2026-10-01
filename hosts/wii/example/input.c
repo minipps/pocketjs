@@ -5,9 +5,9 @@
 #include "input_map.h"
 #include "pocket_wii.h"
 
-int pocket_wii_input_init(void) {
+int pocket_wii_input_init(uint32_t *pad_init_result) {
   int wpad_result = WPAD_Init();
-  PAD_Init();
+  *pad_init_result = PAD_Init();
   return wpad_result;
 }
 
@@ -19,7 +19,9 @@ void pocket_wii_input_poll(pocket_wii_input_t *input) {
   int analog_set = 0;
 
   WPAD_ScanPads();
-  PAD_ScanPads();
+  input->pad_scan_mask = PAD_ScanPads();
+  input->pad1_probe = input->pad_scan_mask & (1u << PAD_CHAN0)
+      ? PAD_ERR_NONE : PAD_ERR_NO_CONTROLLER;
   input->wpad_status = WPAD_GetStatus();
   for (int channel = WPAD_CHAN_0; channel <= WPAD_CHAN_3; ++channel) {
     uint32_t held = WPAD_ButtonsHeld(channel);
@@ -43,8 +45,11 @@ void pocket_wii_input_poll(pocket_wii_input_t *input) {
       }
     }
   }
-  for (int channel = PAD_CHAN0; channel < PAD_CHANMAX; ++channel)
-    gamecube_held |= PAD_ButtonsHeld(channel);
+  for (int channel = PAD_CHAN0; channel < PAD_CHANMAX; ++channel) {
+    uint16_t held = PAD_ButtonsHeld(channel);
+    if (channel == PAD_CHAN0) input->pad1_raw_held = held;
+    gamecube_held |= held;
+  }
 
   input->buttons = pocket_wii_map_buttons(
       remote_held, nunchuk_held, classic_held, gamecube_held);
